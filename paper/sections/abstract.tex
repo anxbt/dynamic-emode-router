@@ -1,0 +1,11 @@
+\begin{abstract}
+
+Aave V3's efficiency mode (eMode) allows users to borrow up to 97\% loan-to-value (LTV) against correlated assets, significantly improving capital efficiency compared to standard 80\% LTV limits. However, static eMode configurations create a tradeoff: users must choose between high borrowing power for correlated assets or diversification flexibility across asset categories. This paper presents a Dynamic eMode Router, a smart contract system that automatically manages eMode transitions based on portfolio composition and market conditions, eliminating the need for manual category switching while maintaining optimal capital efficiency.
+
+Our router monitors user positions and market volatility to determine the optimal eMode category in real-time. When a user's portfolio becomes concentrated in assets from a single eMode category, the router automatically enables that category to maximize borrowing capacity. Conversely, when diversification increases or market volatility exceeds safe thresholds, the router switches to standard mode to prevent liquidation cascades.
+
+Initial simulation results demonstrate that the Dynamic eMode Router improves capital efficiency by X\% while reducing liquidation risk by Y\% compared to static eMode configurations. The system maintains these improvements even during high volatility periods, as validated through Monte Carlo simulations and historical stress tests. This work contributes to the growing body of research on adaptive DeFi protocols that balance capital efficiency with risk management.
+
+\textbf{Keywords:} Decentralized Finance, Aave, Capital Efficiency, Risk Management, Smart Contracts, eMode
+
+\end{abstract}

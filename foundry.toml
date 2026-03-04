@@ -2,5 +2,9 @@
 src = "src"
 out = "out"
 libs = ["lib"]
+remappings = ["aave-v3-core/=lib/aave-v3-core/"]
+
+[rpc_endpoints]
+mainnet = "https://eth-mainnet.g.alchemy.com/v2/qTkt3FbkdPvSS0LU6xN-us0rkgy0yzbn"
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

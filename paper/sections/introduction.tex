@@ -1,0 +1,32 @@
+\section{Introduction}
+
+The evolution of Decentralized Finance (DeFi) lending protocols has consistently focused on two competing objectives: maximizing capital efficiency and minimizing liquidation risk. Aave V3, one of the largest lending protocols with over \$10 billion in total value locked, introduced efficiency mode (eMode) to address this challenge by allowing higher loan-to-value ratios for correlated assets within predefined categories~\cite{aave-v3-whitepaper}.
+
+Under standard Aave operation, users can borrow up to 80\% of their collateral value across any supported assets. However, eMode enables borrowing up to 97\% LTV when both collateral and borrowed assets belong to the same category (e.g., ETH Correlated assets including stETH, wstETH, and rETH). This 17 percentage point increase in borrowing capacity represents a significant improvement in capital efficiency, particularly valuable for sophisticated DeFi strategies such as looping, yield farming, and arbitrage.
+
+Despite these benefits, eMode adoption remains suboptimal due to its static nature. Users must manually select an eMode category before depositing collateral, creating a commitment that is costly to change. This design forces users into a binary choice: optimize for capital efficiency by concentrating in a single asset category, or maintain portfolio diversification at the cost of reduced borrowing power. The manual switching process also introduces timing risks, as users may fail to adjust their eMode category when market conditions change or when their portfolio composition evolves.
+
+\subsection{Problem Statement}
+
+The current eMode implementation suffers from three key limitations:
+
+\textbf{1. Static Configuration Burden:} Users must predict their future borrowing needs and market conditions when selecting an eMode category. This prediction problem is particularly challenging given the volatility of cryptocurrency markets and the evolving landscape of available DeFi strategies.
+
+\textbf{2. Inefficient Capital Utilization:} Users who maintain diversified portfolios cannot access eMode benefits even when a significant portion of their assets would qualify for a specific category. Conversely, users in eMode cannot diversify without losing efficiency benefits, creating unnecessary concentration risk.
+
+\textbf{3. Manual Risk Management:} Current eMode requires users to monitor market conditions and manually adjust their category selection during periods of high volatility or correlation breakdown. This manual process is error-prone and may be too slow during rapid market movements.
+
+\subsection{Contribution}
+
+This paper presents the Dynamic eMode Router, an autonomous smart contract system that addresses these limitations by:
+
+\begin{itemize}
+    \item \textbf{Automated Category Selection:} Continuously analyzing user portfolio composition to determine the optimal eMode category without manual intervention
+    \item \textbf{Risk-Adjusted Switching:} Incorporating real-time volatility metrics and correlation analysis to prevent eMode activation during unsafe market conditions
+    \item \textbf{Capital Efficiency Optimization:} Maximizing borrowing capacity across diverse portfolio compositions while maintaining liquidation safety margins
+    \item \textbf{Composable Architecture:} Providing a standardized interface for other protocols to integrate dynamic eMode functionality
+\end{itemize}
+
+Our evaluation demonstrates that the Dynamic eMode Router improves capital efficiency by X\% and reduces liquidation probability by Y\% compared to static eMode configurations, while maintaining safety even during extreme market stress scenarios such as the May 2022 LUNA collapse.
+
+The remainder of this paper is structured as follows: Section~\ref{sec:background} provides technical background on Aave V3 and eMode mechanics; Section~\ref{sec:design} details the router architecture and algorithms; Section~\ref{sec:security} analyzes security properties and invariants; Section~\ref{sec:evaluation} presents empirical results from Monte Carlo simulations and historical backtests; and Section~\ref{sec:conclusion} discusses implications and future work.
