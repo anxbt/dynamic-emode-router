@@ -12,3 +12,19 @@ docs/
 
 # Dotenv file
 .env
+
+# Test artifacts  
+coverage/
+lcov.info
+.coverage
+
+# LaTeX artifacts
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.log
+paper/*.out
+paper/*.toc
+paper/*.fdb_latexmk
+paper/*.fls
+paper/*.synctex.gz

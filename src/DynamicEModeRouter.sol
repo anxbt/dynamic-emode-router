@@ -12,9 +12,9 @@ import {
 import {
     ReserveConfiguration
 } from "aave-v3-core/contracts/protocol/libraries/configuration/ReserveConfiguration.sol";
-import {
-    IPoolAddressesProvider
-} from "aave-v3-core/contracts/interfaces/IPoolAddressesProvider.sol";
+// import {
+//     IPoolAddressesProvider
+// } from "aave-v3-core/contracts/interfaces/IPoolAddressesProvider.sol";
 import {
     IPriceOracleGetter
 } from "aave-v3-core/contracts/interfaces/IPriceOracleGetter.sol";

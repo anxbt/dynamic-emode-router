@@ -119,10 +119,14 @@ The paper GROWS alongside the work — not after it.
 
 ### ✅ Checkpoint 1 — "The Draft" (Target: 2-3 weeks) — **COMPLETED!**
 **Code goals:**
+- [x] Unit test structure created ✅
+- [x] Integration test framework set up ✅  
+- [x] Simulation test suite ready ✅
+- [x] Test helpers and base classes ✅
 - [ ] Unit tests for all core functions
 - [ ] Test coverage above 60%
 - [x] `/analysis` folder created ✅
-- [x] First Monte Carlo script written (even if simple) ✅
+- [x] First Monte Carlo script written ✅
 
 **Paper goals:**
 - [x] `/paper` folder created ✅
