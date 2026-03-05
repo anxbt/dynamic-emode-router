@@ -1,12 +1,68 @@
 \section{Background}\label{sec:background}
 
-% TODO: Explain Aave V3 architecture, eMode mechanics, and technical details
+This section provides technical foundations for understanding the Dynamic eMode Router by reviewing Aave V3's architecture, eMode mechanics, and the metrics that govern capital efficiency in lending protocols.
 
-\subsection{Aave V3 Protocol Overview}
-% TODO: Brief overview of Aave lending/borrowing mechanics
+\subsection{Aave V3 Protocol Overview}\label{sec:aave-overview}
 
-\subsection{Efficiency Mode (eMode) Mechanics}
-% TODO: Detailed explanation of current eMode implementation
+Aave V3 is a decentralized lending protocol that enables users to deposit crypto assets as collateral to borrow other assets, with interest rates determined algorithmically based on supply and demand. The protocol manages user positions through a core smart contract called the \textit{Pool}, which maintains:
 
-\subsection{Capital Efficiency Metrics}
-% TODO: Define LTV, liquidation thresholds, and efficiency calculations
+\begin{itemize}
+    \item \textbf{Reserves:} Each supported ERC20 token corresponds to a reserve with configuration parameters (decimals, LTV, liquidation thresholds, interest rate models)
+    \item \textbf{User Configurations:} Bitmaps tracking which reserves each user has deposited or borrowed from
+    \item \textbf{aTokens:} Yield-bearing tokens representing deposits; balances automatically accrue interest via scaled balances and normalized income
+    \item \textbf{Debt Tokens:} Variable-rate (scaled) and stable-rate debt tokens representing borrowing obligations
+    \item \textbf{Price Oracle:} Real-time price feed for all assets, crucial for collateral valuation and liquidation calculations
+\end{itemize}
+
+A user's \textit{health factor} (HF) is the primary safety metric in Aave. Formally:
+
+\begin{equation}\label{eq:health-factor}
+\text{HF} = \frac{\text{Collateral Value} \times \text{Avg Liquidation Threshold}}{\text{Total Debt}}
+\end{equation}
+
+When HF drops below 1.0, the user enters liquidation, and third-party liquidators can repay debt to seize collateral at a discount. Users must maintain HF > 1.0 to avoid liquidation; prudent users maintain much higher buffers.
+
+\subsection{Efficiency Mode (eMode) Mechanics}\label{sec:emode-mechanics}
+
+Aave V3 introduces \textit{efficiency mode (eMode)}, a feature allowing higher leverage for correlated assets. Each eMode category (identified by a numerical ID) groups related assets and defines higher borrowing parameters:
+
+\begin{itemize}
+    \item \textbf{Standard Mode (ID = 0):} All users start here. Allows up to 80\% LTV universally
+    \item \textbf{eMode Categories (ID $\geq$ 1):} Specialized modes for correlated asset groups (e.g., ETH staking derivatives: WETH, stETH, wstETH, rETH). Allow up to 97\% LTV when both collateral and borrowed assets belong to the same category
+\end{itemize}
+
+The critical distinction: LTV (Loan-to-Value) determines maximum borrowing capacity. With 97\% eMode LTV versus 80\% standard LTV, a user can potentially borrow 17 percentage points more of their collateral, significantly improving capital efficiency for concentrated portfolios.
+
+Aave enforces \textit{category membership} at the reserve level: each reserve has an eMode category ID. Users see the benefits of high LTV only if:
+\begin{enumerate}
+    \item The user's eMode is set to that category
+    \item Both borrowed and collateral assets belong to that category
+\end{enumerate}
+
+If a user is in ETH eMode but borrows USDC (which has category ID 0), that USDC borrowing uses the standard 80\% LTV, limiting the efficiency gains. This creates the inefficiency our router addresses.
+
+\subsection{Capital Efficiency Metrics}\label{sec:capital-efficiency}
+
+Capital efficiency in lending is measured by leverage: the ratio of borrowed assets to collateral. We define:
+
+\begin{equation}\label{eq:ltv}
+\text{LTV} = \frac{\text{Maximum Borrowing Capacity}}{\text{Total Collateral Value}}
+\end{equation}
+
+\begin{equation}\label{eq:available-borrows}
+\text{Available Borrows} = \text{Collateral} \times \text{LTV} - \text{Current Debt}
+\end{equation}
+
+For diversified users unable to use eMode, available borrowing is limited to:
+\begin{equation}
+\text{Available Borrows}_{\text{standard}} = \sum_i (\text{Collateral}_i) \times 0.80 - \text{Total Debt}
+\end{equation}
+
+For concentrated users in eMode, borrowing increases to:
+\begin{equation}
+\text{Available Borrows}_{\text{eMode}} = \sum_i (\text{Collateral}_i) \times 0.97 - \text{Total Debt}
+\end{equation}
+
+The difference, $(0.97 - 0.80) \times \text{Total Collateral} = 0.17 \times \text{Total Collateral}$, represents the \textit{unlocked capital efficiency} from eMode switching. However, users can only capture this if they (1) manually discover the optimal category, and (2) commit to holding only correlated assets.
+
+The Dynamic eMode Router automates this discovery and switching process while maintaining safety through health factor buffers and conservative switching logic, as detailed in Section~\ref{sec:design}.

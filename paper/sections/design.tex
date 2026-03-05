@@ -1,12 +1,144 @@
 \section{System Design}\label{sec:design}
 
-% TODO: Detailed architecture of the Dynamic eMode Router
+This section describes the architecture, decision algorithm, and safety mechanisms of the Dynamic eMode Router. Our implementation closely mirrors Aave V3's internal `GenericLogic` library to ensure correctness and consistency with Aave's own health factor calculations.
 
-\subsection{Router Architecture}
-% TODO: Contract structure, interfaces, and data flow
+\subsection{Router Architecture}\label{sec:router-architecture}
 
-\subsection{Decision Algorithm}
-% TODO: Portfolio analysis algorithm and switching logic
+The DynamicEModeRouter is deployed as a single smart contract that interfaces with Aave V3's Pool contract. It exposes three categories of functions:
 
-\subsection{Risk Management Framework}
-% TODO: Volatility monitoring and safety mechanisms
+\subsubsection{Data Inspection Functions}
+
+\begin{itemize}
+    \item \textbf{getUserData(address user)} — Returns a snapshot of the user's complete position: total collateral (base currency), total debt, available borrows, current liquidation threshold, current LTV, health factor, and current eMode category
+    \item \textbf{getUserReservePositions(address user)} — Lists every reserve the user interacts with, including asset address, whether it is collateral/borrowing, LTV, liquidation threshold, eMode category membership, and current price
+\end{itemize}
+
+These functions are \texttt{view}-only and incur no gas cost; they allow external systems (keepers, frontends, other contracts) to inspect state before triggering optimization.
+
+\subsubsection{Simulation Engine}
+
+\begin{itemize}
+    \item \textbf{simulateEMode(address user, uint8 targetEModeId)} — Performs a \textit{dry-run} calculation: given a hypothetical eMode category, this function computes what the user's health factor, liquidation threshold, and available borrows would be. It does \textbf{not} modify any state; it purely calculates and returns the simulation result.
+\end{itemize}
+
+The simulation engine is the technical core of our system. It replicates Aave V3's `calculateUserAccountData()` function (from GenericLogic library) but with a forced eMode override, allowing us to predict HF changes before execution.
+
+\subsubsection{Optimization Action}
+
+\begin{itemize}
+    \item \textbf{optimizeEMode()} — The main entry point. This function scans all eMode categories (0 through 10), simulating each, and identifies the category that maximizes available borrows while staying safe (HF > 1.05). If a different category improves borrowing, it calls Aave's `pool.setUserEMode()` to execute the switch. Emits an `EModeOptimized` event for transparency.
+\end{itemize}
+
+\subsubsection{Contract Invariants}
+
+\begin{itemize}
+    \item \textbf{ReentrancyGuard protection:} The `optimizeEMode()` function is protected by ReentrancyGuard to prevent flash loan attacks or other reentrancy vectors
+    \item \textbf{Only msg.sender is optimized:} The optimization always operates on `msg.sender`, ensuring users cannot optimize others' positions
+    \item \textbf{No custody of funds:} The router never holds user assets; it only reads balances and configures eMode settings
+\end{itemize}
+
+\subsection{Decision Algorithm}\label{sec:decision-algorithm}
+
+Algorithm~\ref{alg:optimize-emode} formalizes the optimization logic.
+
+\begin{algorithm}
+\caption{OptimizeEMode Decision Algorithm}\label{alg:optimize-emode}
+\begin{algorithmic}[1]
+\Function{OptimizeEMode}{user}
+    \State currentEMode $\gets$ pool.getUserEMode(user)
+    \State bestEModeId $\gets$ currentEMode
+    \State bestAvailableBorrows $\gets$ simulateEMode(user, currentEMode).availableBorrows
+    \For{categoryId $:= 0$ to MAX\_EMODE\_CATEGORY}
+        \If{categoryId == currentEMode}
+            \State \textbf{continue}
+        \EndIf
+        \State sim $\gets$ simulateEMode(user, categoryId)
+        \If{sim.healthFactor $>$ HF\_BUFFER \textbf{and} sim.availableBorrows $>$ bestAvailableBorrows}
+            \State bestAvailableBorrows $\gets$ sim.availableBorrows
+            \State bestEModeId $\gets$ categoryId
+        \EndIf
+    \EndFor
+    \If{bestEModeId $\neq$ currentEMode}
+        \State pool.setUserEMode(bestEModeId)
+        \State \textbf{emit} EModeOptimized(user, currentEMode, bestEModeId)
+    \EndIf
+\EndFunction
+\end{algorithmic}
+\end{algorithm}
+
+\textbf{Key decision criteria:}
+\begin{enumerate}
+    \item \textbf{Safety first:} Only switch to a category if the simulated HF exceeds HF\_BUFFER (1.05 WAD), providing a 5\% safety margin
+    \item \textbf{Borrowing improvement:} Only switch if available borrows actually increase, preventing no-op or harmful switches
+    \item \textbf{Greedy best:} Among all safe categories, pick the one with the highest available borrows (capital efficiency maximization)
+    \item \textbf{Idempotent:} If the best category is the current category, skip the transaction (no unnecessary on-chain operations)
+\end{enumerate}
+
+\subsubsection{Simulation Calculation}
+
+The simulateEMode function computes health factor for a target eMode category by iterating over all reserves the user interacts with:
+
+\begin{enumerate}
+    \item For each collateral asset: multiply balance by (eMode LTV if asset matches target category, else standard LTV)
+    \item Sum weighted LTV and weighted liquidation threshold
+    \item For each borrowing asset: accumulate total debt (scaled variable debt + plain stable debt)
+    \item Calculate: avgLtv = weightedLtv / totalCollateral, avgLiqThreshold = weightedLiqThreshold / totalCollateral
+    \item Health Factor: $\text{HF} = \frac{\text{totalCollateral} \times \text{avgLiqThreshold}}{\text{totalDebt}}$
+    \item Available Borrows: $\max(0, \text{totalCollateral} \times \text{avgLtv} - \text{totalDebt})$
+\end{enumerate}
+
+This mirrors Aave's GenericLogic.calculateUserAccountData() precisely, ensuring our simulations match what Aave will enforce on-chain.
+
+\subsection{Risk Management Framework}\label{sec:risk-management}
+
+The router incorporates multiple layers of safety to prevent user harm:
+
+\subsubsection{Health Factor Buffer}
+
+\begin{equation}\label{eq:hf-buffer}
+\text{HF}_{\text{required}} = 1.05 \text{ WAD}
+\end{equation}
+
+By requiring HF > 1.05 before switching, we provide a 5\% safety margin. This buffer prevents oscillations near the liquidation boundary and allows for small price movements without immediate liquidation risk. Empirically, 1.05 is conservative enough to survive typical intraday volatility while still unlocking meaningful capital efficiency gains.
+
+\subsubsection{Borrow Improvement Check}
+
+The router only executes a switch if new available borrows are strictly greater than current available borrows:
+
+\begin{equation}
+\text{AvailableBorrows}_{\text{new}} > \text{AvailableBorrows}_{\text{current}}
+\end{equation}
+
+This prevents wasteful switching to categories that offer no benefit and ensures every switch improves the user's position.
+
+\subsubsection{Pre-Execution Simulation vs. Post-Execution Reality}
+
+Because on-chain conditions (prices, interest rates, user balances) can change between simulation and execution, the router uses a conservative approach:
+
+\begin{itemize}
+    \item Simulations use live Aave state (reserves, prices, user balances) at the time of the transaction
+    \item The HF buffer (1.05) absorbs small changes in price or accrued interest
+    \item If a user's position becomes unhealthy between simulation and execution (e.g., massive liquidation event), Aave's `setUserEMode()` may still fail, but it will revert the entire transaction atomically
+\end{itemize}
+
+\subsubsection{Reentrancy Protection}
+
+The optimizeEMode function uses OpenZeppelin's ReentrancyGuard. During or after calling pool.setUserEMode(), if a malicious callback attempts to re-enter optimizeEMode, the guard blocks the second call. This prevents flash loan attacks where an attacker could:
+\begin{enumerate}
+    \item Borrow a large amount via flash loan
+    \item Trigger router optimization
+    \item Have the router call pool.setUserEMode(), triggering a callback
+    \item In the callback, re-enter the router and manipulate state
+\end{enumerate}
+
+ReentrancyGuard prevents step (4) by reverting the second call.
+
+\subsubsection{No Manual Price Manipulation}
+
+The router reads asset prices directly from Aave's IPriceOracleGetter interface. We do not accept user-supplied prices or make assumptions about price bounds. This ensures we inherit Aave's oracle security model and are immune to price oracle attacks.
+
+\subsubsection{Reserve Whitelist via eMode Membership}
+
+We do not hardcode which assets are safe. Instead, we only consider assets that Aave itself has marked as members of specific eMode categories. If Aave governance adds a new asset or removes one from a category, the router automatically respects that change. This delegates reserve safety decisions to Aave's governance.
+
+\textbf{Summary:} The risk management framework combines conservative health factor buffers, pre-execution checks, atomic transactions, and delegation to Aave's audited oracle and governance processes. Together, these mechanisms ensure the router enhances capital efficiency without introducing new risk vectors.
